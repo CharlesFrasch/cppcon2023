@@ -4,22 +4,61 @@ set(CMAKE_CXX_COMPILER /usr/bin/g++-12)
 
 project(cppcon2023)
 
+cmake_path(GET PROJECT_BINARY_DIR STEM buildDir)
+string(TOLOWER ${buildDir} buildDir)
+if(buildDir STREQUAL "release")
+    set(buildType RelWithDebInfo)
+elseif(buildDir STREQUAL "debug")
+    set(buildType Debug)
+else()
+    set(buildType Debug)
+endif()
 
-# TODO fix this
-set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE ${buildType})
+endif()
 
-set(CMAKE_CXX_STANDARD 20)
+# if(CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo OR CMAKE_BUILD_TYPE STREQUAL Release )
+# endif()
+
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Werror -Wextra -Wconversion)
 add_compile_options(-Wno-unused-parameter)
 
-add_executable(benchmark benchmark.cpp)
-target_link_libraries(benchmark pthread)
 
-# add_executable(benchmark.tsan benchmark.cpp)
-# target_compile_options(benchmark.tsan -fsanitize=thread)
-# target_link_libraries(benchmark.tsan pthread)
+add_executable(fifo1 fifo1.cpp)
+target_link_libraries(fifo1 pthread)
+
+add_executable(fifo1.tsan fifo1.cpp)
+target_compile_options(fifo1.tsan PRIVATE -fsanitize=thread)
+target_link_libraries(fifo1.tsan PRIVATE pthread tsan)
+
+
+add_executable(fifo2 fifo2.cpp)
+target_link_libraries(fifo2 pthread)
+
+add_executable(fifo2.tsan fifo2.cpp)
+target_compile_options(fifo2.tsan PRIVATE -fsanitize=thread)
+target_link_libraries(fifo2.tsan PRIVATE pthread tsan)
+
+
+add_executable(fifo3 fifo3.cpp)
+target_link_libraries(fifo3 pthread)
+
+add_executable(fifo3.tsan fifo3.cpp)
+target_compile_options(fifo3.tsan PRIVATE -fsanitize=thread)
+target_link_libraries(fifo3.tsan PRIVATE pthread tsan)
+
+
+add_executable(fifo4 fifo4.cpp)
+target_link_libraries(fifo4 pthread)
+
+add_executable(fifo4.tsan fifo4.cpp)
+target_compile_options(fifo4.tsan PRIVATE -fsanitize=thread)
+target_link_libraries(fifo4.tsan PRIVATE pthread tsan)
+
 
 include(GoogleTest)
 enable_testing()

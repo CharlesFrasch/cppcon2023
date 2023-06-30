@@ -57,3 +57,37 @@ TEST(Fifo1, pop) {
     }
     EXPECT_FALSE(fifo.pop(value));
 }
+
+TEST(Fifo1, popFullFifo) {
+    auto fifo = TestFifo(4);
+
+    auto value = TestFifo::ValueType{};
+    EXPECT_FALSE(fifo.pop(value));
+
+    for (auto i = 0u; i < fifo.size(); ++i) {
+        fifo.push(42 + i);
+    }
+    EXPECT_TRUE(fifo.full());
+
+    for (auto i = 0u; i < fifo.size()*4; ++i) {
+        EXPECT_TRUE(fifo.pop(value));
+        EXPECT_EQ(42+i, value);
+
+        EXPECT_TRUE(fifo.push(42 + 4 + i));
+        EXPECT_TRUE(fifo.full());
+    }
+}
+
+TEST(Fifo1, popEmpty) {
+    auto fifo = TestFifo(4);
+
+    auto value = TestFifo::ValueType{};
+    EXPECT_FALSE(fifo.pop(value));
+
+    for (auto i = 0u; i < fifo.size()*4; ++i) {
+        EXPECT_TRUE(fifo.empty());
+        EXPECT_TRUE(fifo.push(42 + i));
+        EXPECT_TRUE(fifo.pop(value));
+        EXPECT_EQ(42+i, value);
+    }
+}

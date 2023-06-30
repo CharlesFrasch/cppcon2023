@@ -1,17 +1,18 @@
 #pragma once
 
+#include <atomic>
 #include <cstdlib>
 #include <memory>
 
 
-/// Non-threadsafe circular FIFO
+/// Threadsafe but flawed circular FIFO
 template<typename T>
-class Fifo1
+class Fifo2
 {
 public:
     using ValueType = T;
 
-    explicit Fifo1(std::size_t size)
+    explicit Fifo2(std::size_t size)
         : size_{size}
         , ring_{
               static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
@@ -52,6 +53,9 @@ private:
     using RingType = std::unique_ptr<ValueType[], decltype(&std::free)>;
     RingType ring_;
 
-    std::size_t pushCursor_{};
-    std::size_t popCursor_{};
+    /// Loaded and stored by the push thread; loaded by the pop thread
+    std::atomic<std::size_t> pushCursor_{};
+
+    /// Loaded and stored by the pop thread; loaded by the push thread
+    std::atomic<std::size_t> popCursor_{};
 };
