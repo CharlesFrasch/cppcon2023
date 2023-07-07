@@ -6,7 +6,7 @@
 #include <new>
 
 
-/// Threadsafe, efficient circular FIFO
+/// Threadsafe, efficient circular FIFO with cached cursors
 template<typename T>
 class Fifo4
 {
@@ -15,11 +15,9 @@ public:
 
     explicit Fifo4(std::size_t size)
         : size_{size}
-        , ring_{
-              static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
+        , ring_{static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
               &std::free}
     {}
-
 
     std::size_t size() const { return size_; }
     bool empty() const { return popCursor_ == pushCursor_; }
@@ -74,7 +72,6 @@ private:
     static constexpr auto hardware_destructive_interference_size = std::size_t{128};
 
     /// Loaded and stored by the push thread; loaded by the pop thread
-    // TODO fix initialization on the others
     alignas(hardware_destructive_interference_size) std::atomic<std::size_t> pushCursor_;
 
     /// Exclusive to the pop thread

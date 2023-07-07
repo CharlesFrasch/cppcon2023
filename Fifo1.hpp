@@ -13,11 +13,15 @@ public:
 
     explicit Fifo1(std::size_t size)
         : size_{size}
-        , ring_{
-              static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
-              &std::free}
+        , ring_{static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))), &std::free}
     {}
 
+    ~Fifo1() {
+        while(not empty()) {
+            ring_[popCursor_ % size_].~T();
+            ++popCursor_;
+        }
+    }
 
     std::size_t size() const { return size_; }
     bool empty() const { return popCursor_ == pushCursor_; }
@@ -29,7 +33,6 @@ public:
         }
         new (&ring_[pushCursor_ % size_]) T(value);
         ++pushCursor_;
-
         return true;
     }
 
@@ -42,7 +45,6 @@ public:
         value = ring_[popCursor_ % size_];
         ring_[popCursor_ % size_].~T();
         ++popCursor_;
-
         return true;
     }
 
@@ -52,6 +54,6 @@ private:
     using RingType = std::unique_ptr<ValueType[], decltype(&std::free)>;
     RingType ring_;
 
-    std::size_t pushCursor_{};
-    std::size_t popCursor_{};
+    std::size_t pushCursor_;
+    std::size_t popCursor_;
 };

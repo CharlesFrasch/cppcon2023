@@ -60,11 +60,19 @@ target_compile_options(fifo4.tsan PRIVATE -fsanitize=thread)
 target_link_libraries(fifo4.tsan PRIVATE pthread tsan)
 
 
+# add_executable(fifo7 fifo7.cpp)
+# target_link_libraries(fifo7 pthread)
+# 
+# add_executable(fifo7.tsan fifo7.cpp)
+# target_compile_options(fifo7.tsan PRIVATE -fsanitize=thread)
+# target_link_libraries(fifo7.tsan PRIVATE pthread tsan)
+
+
 include(GoogleTest)
 enable_testing()
 
-add_executable(tests sanitizers.cpp Fifo1_ut.cpp)
-target_compile_options(tests PRIVATE -fsanitize=undefined -fsanitize=address)
-target_link_libraries(tests PRIVATE asan ubsan gtest gtest_main)
-target_link_options(tests PRIVATE -fsanitize=undefined -fsanitize=address)
-gtest_add_tests(TARGET tests)
+add_executable(unitTests sanitizers.cpp unitTests.cpp)
+target_compile_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address)
+target_link_libraries(unitTests PRIVATE asan ubsan gtest gtest_main)
+target_link_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address)
+gtest_add_tests(TARGET unitTests)

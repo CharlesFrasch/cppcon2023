@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -42,7 +43,7 @@ void bench(char const* name, int cpu1, int cpu2) {
                 ;
             }
             if (val[0] != i) {
-                throw std::runtime_error("foo");
+                throw std::runtime_error("invalid value");
             }
         }
     });
@@ -59,8 +60,9 @@ void bench(char const* name, int cpu1, int cpu2) {
     }
     auto stop = std::chrono::steady_clock::now();
     t.join();
-    std::cout << name << ": " << iters * 1'000'000'000 /
-        std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count()
+    auto delta = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+    std::cout << name << ": "
+        << std::setw(8) << std::right << iters * 1'000'000'000 / delta.count()
         << " ops/s\n";
 }
 

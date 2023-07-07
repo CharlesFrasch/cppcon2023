@@ -15,11 +15,9 @@ public:
 
     explicit Fifo3(std::size_t size)
         : size_{size}
-        , ring_{
-              static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
+        , ring_{static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
               &std::free}
     {}
-
 
     std::size_t size() const { return size_; }
     bool empty() const { return popCursor_ == pushCursor_; }
@@ -68,8 +66,8 @@ private:
     static constexpr auto hardware_destructive_interference_size = std::size_t{128};
 
     /// Loaded and stored by the push thread; loaded by the pop thread
-    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> pushCursor_{};
+    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> pushCursor_;
 
     /// Loaded and stored by the pop thread; loaded by the push thread
-    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> popCursor_{};
+    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> popCursor_;
 };
