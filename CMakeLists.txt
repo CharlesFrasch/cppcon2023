@@ -13,13 +13,10 @@ elseif(buildDir STREQUAL "debug")
 else()
     set(buildType Debug)
 endif()
-
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE ${buildType})
 endif()
 
-# if(CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo OR CMAKE_BUILD_TYPE STREQUAL Release )
-# endif()
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
@@ -71,7 +68,7 @@ target_link_libraries(fifo4.tsan PRIVATE pthread tsan)
 include(GoogleTest)
 enable_testing()
 
-add_executable(unitTests sanitizers.cpp unitTests.cpp)
+add_executable(unitTests unitTests.cpp)
 target_compile_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address)
 target_link_libraries(unitTests PRIVATE asan ubsan gtest gtest_main)
 target_link_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address)
