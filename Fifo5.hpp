@@ -178,12 +178,12 @@ public:
 
         popper_t(popper_t&& other) noexcept
             : fifo_{std::move(other.fifo_)}
-            , cursor_{std::move(other.other_)} {
+            , cursor_{std::move(other.cursor_)} {
             other.release();
         }
         popper_t& operator=(popper_t&& other) noexcept {
             fifo_ = std::move(other.fifo_);
-            cursor_ = std::move(other.other_);
+            cursor_ = std::move(other.cursor_);
             other.release();
             return *this;
         }
@@ -204,6 +204,12 @@ public:
 
         /// @name Direct access to the fifo's ring
         ///@{
+
+        // QUESTION
+        // If std::start_lifetime_as<T> must be called in the pusher_t
+        // get() calls must it also be applied here? Or, are the
+        // pusher_t calls to it and the memcpy sufficient to have an
+        // actual object in the referenced t[] element?
         auto& get() noexcept { return *fifo_->element(cursor_); }
         auto const& get() const noexcept { return *fifo_->element(cursor_); }
 

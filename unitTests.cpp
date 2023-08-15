@@ -3,11 +3,11 @@
 #include "Fifo3.hpp"
 #include "Fifo4.hpp"
 #include "Fifo5.hpp"
-// TODO #include "Fifo7.hpp"
 
 #include <gtest/gtest.h>
 
 #include <type_traits>
+
 
 extern "C" {
     void __ubsan_on_report() {
@@ -31,7 +31,7 @@ public:
     FifoType fifo{4};
 };
 
-using test_type = int;
+using test_type = unsigned int;
 
 
 template<typename FifoT> using FifoTest = FifoTestBase<FifoT>;
@@ -96,7 +96,7 @@ TYPED_TEST(FifoTest, pop) {
     for (auto i = 0u; i < this->fifo.size(); ++i) {
         auto value = typename TestFixture::value_type{};
         EXPECT_TRUE(this->fifo.pop(value));
-        EXPECT_EQ(42+i, value);
+        EXPECT_EQ(42 + i, value);
     }
     EXPECT_FALSE(this->fifo.pop(value));
 }
@@ -112,7 +112,7 @@ TYPED_TEST(FifoTest, popFullFifo) {
 
     for (auto i = 0u; i < this->fifo.size()*4; ++i) {
         EXPECT_TRUE(this->fifo.pop(value));
-        EXPECT_EQ(42+i, value);
+        EXPECT_EQ(42 + i, value);
     EXPECT_FALSE(this->fifo.full());
 
         EXPECT_TRUE(this->fifo.push(42 + 4 + i));
@@ -128,11 +128,26 @@ TYPED_TEST(FifoTest, popEmpty) {
         EXPECT_TRUE(this->fifo.empty());
         EXPECT_TRUE(this->fifo.push(42 + i));
         EXPECT_TRUE(this->fifo.pop(value));
-        EXPECT_EQ(42+i, value);
+        EXPECT_EQ(42 + i, value);
     }
 
     EXPECT_TRUE(this->fifo.empty());
     EXPECT_FALSE(this->fifo.pop(value));
+}
+
+TYPED_TEST(FifoTest, wrap) {
+    auto value = typename TestFixture::value_type{};
+    for (auto i = 0u; i < this->fifo.size() * 2 + 1; ++i) {
+        this->fifo.push(42 + i);
+        EXPECT_TRUE(this->fifo.pop(value));
+        EXPECT_EQ(42 + i, value);
+    }
+
+    for (auto i = 0u; i < 8u; ++i) {
+        this->fifo.push(42 + i);
+        EXPECT_TRUE(this->fifo.pop(value));
+        EXPECT_EQ(42 + i, value);
+    }
 }
 
 
@@ -184,13 +199,29 @@ TYPED_TEST(ProxyTest, pusherRelease) {
 
     {
         auto pusher = this->fifo.push();
+        ASSERT_TRUE(!!pusher);
         pusher = 24;
         pusher.release();
+        EXPECT_FALSE(!!pusher);
     }
     EXPECT_EQ(42, *this->fifo.pop());
     EXPECT_TRUE(this->fifo.empty());
 }
 
+TYPED_TEST(ProxyTest, popperRelease) {
+    this->fifo.push() = 42;
+    EXPECT_FALSE(this->fifo.empty());
+
+    {
+        auto popper = this->fifo.pop();
+        ASSERT_TRUE(!!popper);
+        EXPECT_EQ(42, *popper);
+        popper.release();
+        EXPECT_FALSE(!!popper);
+    }
+    EXPECT_FALSE(this->fifo.empty());
+    EXPECT_EQ(42, *this->fifo.pop());
+}
 
 
 struct ABC
@@ -199,6 +230,13 @@ struct ABC
     int b;
     int c;
 };
+
+// Specialize ValueSizeTraits not to copy ABC::c.
+template<>
+inline std::size_t ValueSizeTraits<ABC>::size(value_type const&) {
+    return sizeof(ABC::a) + sizeof(ABC::b);
+}
+
 
 template<typename FifoT> using ProxyMoveTest = FifoTestBase<FifoT>;
 using ProxyMoveFifoTypes = ::testing::Types<
@@ -212,22 +250,68 @@ TYPED_TEST(ProxyMoveTest, pusherMove) {
     pusher = ABC{100, 200, 300};
     EXPECT_TRUE(!!pusher);
     EXPECT_EQ(100, pusher->a);
-    EXPECT_EQ(200, pusher->b);
-    EXPECT_EQ(300, pusher->c);
 
     // move ctor
     auto pusher2 = std::move(pusher);
     EXPECT_FALSE(!!pusher);
     EXPECT_TRUE(!!pusher2);
     EXPECT_EQ(100, pusher2->a);
-    EXPECT_EQ(200, pusher2->b);
-    EXPECT_EQ(300, pusher2->c);
 
     // move assignment
     pusher = std::move(pusher2);
     EXPECT_TRUE(!!pusher);
     EXPECT_FALSE(!!pusher2);
     EXPECT_EQ(100, pusher->a);
-    EXPECT_EQ(200, pusher->b);
-    EXPECT_EQ(300, pusher->c);
+}
+
+TYPED_TEST(ProxyMoveTest, popperMove) {
+    for (auto i = 0; i < static_cast<int>(this->fifo.size()); ++i) {
+        this->fifo.push(ABC{42 + i, 43, 44});
+    }
+
+    for (auto i = 0u; i < this->fifo.size(); ++i) {
+        auto popper = this->fifo.pop();
+        ASSERT_TRUE(!!popper);
+        EXPECT_EQ(42 + i, popper->a);
+
+        // move ctor
+        auto popper2 = std::move(popper);
+        EXPECT_FALSE(!!popper);
+        ASSERT_TRUE(!!popper2);
+        EXPECT_EQ(42 + i, popper2->a);
+
+        // move assignment
+        popper = std::move(popper2);
+        ASSERT_TRUE(!!popper);
+        EXPECT_FALSE(!!popper2);
+        EXPECT_EQ(42 + i, popper->a);
+    }
+    EXPECT_TRUE(this->fifo.empty());
+}
+
+TYPED_TEST(ProxyMoveTest, pusherUsesValueSizeTraits) {
+    // Push and pop a value into every slot of the fifo using assign
+    // directly to value_type&. This bypasses use of ValueSizeTraits.
+    for (auto i = 0; i < static_cast<int>(this->fifo.size()); ++i) {
+        {
+            auto pusher = this->fifo.push();
+            *pusher = ABC{1, 2, 3};
+        }
+        auto popper = this->fifo.pop();
+        EXPECT_EQ(1, popper->a);
+        EXPECT_EQ(2, popper->b);
+        EXPECT_EQ(3, popper->c);
+    }
+
+    // Now push using operator= and a different value
+    {
+        auto pusher = this->fifo.push();
+        pusher = ABC{100, 200, 300};
+    }
+
+    auto popper = this->fifo.pop();
+    EXPECT_EQ(100, popper->a);
+    EXPECT_EQ(200, popper->b);
+    EXPECT_EQ(3, popper->c);
+
 }
