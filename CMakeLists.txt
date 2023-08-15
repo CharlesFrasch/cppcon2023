@@ -17,6 +17,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE ${buildType})
 endif()
 
+set(BOOST_ROOT /mnt/c/Users/Charles/AppData/Local/lxss/rootfs/usr/)
+find_package(Boost REQUIRED)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
@@ -24,45 +26,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Werror -Wextra -Wconversion)
 add_compile_options(-Wno-unused-parameter)
 
+function(add_fifo fifo)
+    add_executable(${fifo} ${CMAKE_SOURCE_DIR}/${fifo}.cpp)
+    target_link_libraries(${fifo} pthread)
 
-add_executable(fifo1 fifo1.cpp)
-target_link_libraries(fifo1 pthread)
-
-add_executable(fifo1.tsan fifo1.cpp)
-target_compile_options(fifo1.tsan PRIVATE -fsanitize=thread)
-target_link_libraries(fifo1.tsan PRIVATE pthread tsan)
-
-
-add_executable(fifo2 fifo2.cpp)
-target_link_libraries(fifo2 pthread)
-
-add_executable(fifo2.tsan fifo2.cpp)
-target_compile_options(fifo2.tsan PRIVATE -fsanitize=thread)
-target_link_libraries(fifo2.tsan PRIVATE pthread tsan)
+    add_executable(${fifo}.tsan ${CMAKE_SOURCE_DIR}/${fifo}.cpp)
+    target_compile_options(${fifo}.tsan PRIVATE -fsanitize=thread)
+    target_link_libraries(${fifo}.tsan PRIVATE pthread tsan)
+endfunction()
 
 
-add_executable(fifo3 fifo3.cpp)
-target_link_libraries(fifo3 pthread)
-
-add_executable(fifo3.tsan fifo3.cpp)
-target_compile_options(fifo3.tsan PRIVATE -fsanitize=thread)
-target_link_libraries(fifo3.tsan PRIVATE pthread tsan)
-
-
-add_executable(fifo4 fifo4.cpp)
-target_link_libraries(fifo4 pthread)
-
-add_executable(fifo4.tsan fifo4.cpp)
-target_compile_options(fifo4.tsan PRIVATE -fsanitize=thread)
-target_link_libraries(fifo4.tsan PRIVATE pthread tsan)
-
-
-# add_executable(fifo7 fifo7.cpp)
-# target_link_libraries(fifo7 pthread)
-# 
-# add_executable(fifo7.tsan fifo7.cpp)
-# target_compile_options(fifo7.tsan PRIVATE -fsanitize=thread)
-# target_link_libraries(fifo7.tsan PRIVATE pthread tsan)
+add_fifo(fifo1)
+add_fifo(fifo2)
+add_fifo(fifo3)
+add_fifo(fifo4)
+add_fifo(fifo5)
+add_fifo(boost_lockfree)
+add_fifo(rigtorp)
+target_compile_options(rigtorp PRIVATE -Wno-interference-size)
+target_compile_options(rigtorp.tsan PRIVATE -Wno-interference-size)
 
 
 include(GoogleTest)

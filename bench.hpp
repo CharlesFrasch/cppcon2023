@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 #include <pthread.h>
 
@@ -27,21 +28,33 @@ static void pinThread(int cpu) {
 }
 
 template<typename T>
+struct isRigtorp : std::false_type {};
+
+template<typename T>
 void bench(char const* name, int cpu1, int cpu2) {
-    using ValueType = typename T::ValueType;
-    using AryValueType = typename ValueType::value_type;
+    using value_type = typename T::value_type;
+    using AryValueType = typename value_type::value_type;
 
     constexpr auto queueSize = 131072;
-    constexpr auto iters = 10'000'000l;
+    // constexpr auto iters = 200'000'000l;
+    constexpr auto iters = 100'000'000l;
 
     T q(queueSize);
-    auto t = std::thread([&] {
+    auto t = std::jthread([&] {
         pinThread(cpu1);
         for (auto i = AryValueType{}; i < iters; ++i) {
-            ValueType val;
-            while (not q.pop(val)) {
-                ;
+
+            value_type val;
+            if constexpr(isRigtorp<T>::value) {
+                while (!q.front());
+                val = *q.front();
+                q.pop();
+            } else {
+                while (not q.pop(val)) {
+                    ;
+                }
             }
+
             if (val[0] != i) {
                 throw std::runtime_error("invalid value");
             }
@@ -51,15 +64,21 @@ void bench(char const* name, int cpu1, int cpu2) {
     pinThread(cpu2);
     auto start = std::chrono::steady_clock::now();
     for (auto i = AryValueType{}; i < iters; ++i) {
-        while (not q.push(ValueType{i})) {
-          ;
+        if constexpr(isRigtorp<T>::value) {
+            while (not q.try_push(value_type{i})) {
+                ;
+            }
+
+        } else {
+            while (not q.push(value_type{i})) {
+                ;
+            }
         }
     }
     while (not q.empty()) {
       ;
     }
     auto stop = std::chrono::steady_clock::now();
-    t.join();
     auto delta = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     std::cout << name << ": "
         << std::setw(8) << std::right << iters * 1'000'000'000 / delta.count()
@@ -74,6 +93,6 @@ void bench(char const* name, int argc, char* argv[]) {
        cpu1 = std::atoi(argv[1]);
        cpu2 = std::atoi(argv[2]);
     }
-    using ValueType = std::array<long, 25>;
-    bench<FifoT<ValueType>>(name, cpu1, cpu2);
+    using value_type = std::array<long, 25>;
+    bench<FifoT<value_type>>(name, cpu1, cpu2);
 }

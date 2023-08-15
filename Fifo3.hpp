@@ -1,29 +1,40 @@
 #pragma once
 
 #include <atomic>
-#include <cstdlib>
 #include <memory>
 #include <new>
 
 
 /// Threadsafe, efficient circular FIFO
-template<typename T>
-class Fifo3
+template<typename T, typename Alloc = std::allocator<T>>
+class Fifo3 : private Alloc
 {
 public:
-    using ValueType = T;
+    using value_type = T;
+    using allocator_traits = std::allocator_traits<Alloc>;
+    using size_type = typename allocator_traits::size_type;
 
-    explicit Fifo3(std::size_t size)
-        : size_{size}
-        , ring_{static_cast<ValueType*>(std::aligned_alloc(alignof(T), size * sizeof(T))),
-              &std::free}
+    explicit Fifo3(size_type size, Alloc const& alloc = Alloc{})
+        : Alloc{alloc}
+        , size_{size}
+        , ring_{allocator_traits::allocate(*this, size)}
     {}
 
-    std::size_t size() const { return size_; }
-    bool empty() const { return popCursor_ == pushCursor_; }
-    bool full() const { return (pushCursor_ - popCursor_) == size_; }
+    ~Fifo3() {
+        while(not empty()) {
+            ring_[popCursor_ % size_].~T();
+            ++popCursor_;
+        }
+        allocator_traits::deallocate(*this, ring_, size_);
+    }
 
-    bool push(T const& value) {
+    auto size() const { return size_; }
+    auto empty() const { return popCursor_ == pushCursor_; }
+    auto full() const { return (pushCursor_ - popCursor_) == size_; }
+
+    /// Push one object onto the fifo.
+    /// @return `true` if the operation is successful; `false` if fifo is full.
+    auto push(T const& value) {
         auto pushCursor = pushCursor_.load(std::memory_order_relaxed);
         auto popCursor = popCursor_.load(std::memory_order_acquire);
         if (full(pushCursor, popCursor)) {
@@ -35,8 +46,8 @@ public:
     }
 
     /// Pop one object from the fifo.
-    /// @return `true` if the pop operation is successful; `false` if fifo was empty.
-    bool pop(T& value) {
+    /// @return `true` if the pop operation is successful; `false` if fifo is empty.
+    auto pop(T& value) {
         auto pushCursor = pushCursor_.load(std::memory_order_acquire);
         auto popCursor = popCursor_.load(std::memory_order_relaxed);
         if (empty(pushCursor, popCursor)) {
@@ -49,25 +60,32 @@ public:
     }
 
 private:
-    bool full(std::size_t pushCursor, std::size_t popCursor) const {
+    auto full(size_type pushCursor, size_type popCursor) const {
         return (pushCursor - popCursor) == size_;
     }
-    static bool empty(std::size_t pushCursor, std::size_t popCursor) {
+    static auto empty(size_type pushCursor, size_type popCursor) {
         return pushCursor == popCursor;
     }
 
 private:
-    std::size_t size_;
+    size_type size_;
+    T* ring_;
 
-    using RingType = std::unique_ptr<ValueType[], decltype(&std::free)>;
-    RingType ring_;
+    using CursorType = std::atomic<size_type>;
+    static_assert(CursorType::is_always_lock_free);
 
     // https://stackoverflow.com/questions/39680206/understanding-stdhardware-destructive-interference-size-and-stdhardware-cons
-    static constexpr auto hardware_destructive_interference_size = std::size_t{128};
+    // And this:
+    // error: use of ‘std::hardware_destructive_interference_size’ [-Werror=interference-size]
+    // note: its value can vary between compiler versions or with different ‘-mtune’ or ‘-mcpu’ flags
+    // note: if this use is part of a public ABI, change it to instead use a constant variable you define
+    // note: the default value for the current CPU tuning is 64 bytes
+    // note: you can stabilize this value with ‘--param hardware_destructive_interference_size=64’, or disable this warning with ‘-Wno-interference-size’
+    static constexpr auto hardware_destructive_interference_size = size_type{128};
 
     /// Loaded and stored by the push thread; loaded by the pop thread
-    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> pushCursor_;
+    alignas(hardware_destructive_interference_size) CursorType pushCursor_;
 
     /// Loaded and stored by the pop thread; loaded by the push thread
-    alignas(hardware_destructive_interference_size) std::atomic<std::size_t> popCursor_;
+    alignas(hardware_destructive_interference_size) CursorType popCursor_;
 };
