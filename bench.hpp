@@ -32,8 +32,8 @@ struct isRigtorp : std::false_type {};
 
 template<typename T>
 void bench(char const* name, int cpu1, int cpu2) {
-    using value_type = typename T::value_type;
-    using AryValueType = typename value_type::value_type;
+    using value_type = struct alignas(64) : T {};
+    using AryValueType = typename value_type::value_type::value_type;
 
     constexpr auto queueSize = 131072;
     // constexpr auto iters = 200'000'000l;
@@ -44,7 +44,7 @@ void bench(char const* name, int cpu1, int cpu2) {
         pinThread(cpu1);
         for (auto i = AryValueType{}; i < iters; ++i) {
 
-            value_type val;
+            typename value_type::value_type val;
             if constexpr(isRigtorp<T>::value) {
                 while (!q.front());
                 val = *q.front();
@@ -70,7 +70,7 @@ void bench(char const* name, int cpu1, int cpu2) {
             }
 
         } else {
-            while (not q.push(value_type{i})) {
+            while (not q.push(typename value_type::value_type{i})) {
                 ;
             }
         }

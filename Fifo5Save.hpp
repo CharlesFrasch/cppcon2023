@@ -1,7 +1,6 @@
 #pragma once
 
 #include <atomic>
-#include <cassert>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -11,15 +10,15 @@
 /// Almost correct. See [P2674R0](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2674r0.pdf).
 template<typename T>
 struct is_implicit_lifetime : std::disjunction<
-                              std::is_scalar<T>,
-                              std::is_array<T>,
-                              std::is_aggregate<T>,
-                              std::conjunction<
-                              std::is_trivially_destructible<T>,
-                              std::disjunction<
-                              std::is_trivially_default_constructible<T>,
-                              std::is_trivially_copy_constructible<T>,
-                              std::is_trivially_move_constructible<T>>>> {};
+        std::is_scalar<T>,
+        std::is_array<T>,
+        std::is_aggregate<T>,
+        std::conjunction<
+            std::is_trivially_destructible<T>,
+            std::disjunction<
+                std::is_trivially_default_constructible<T>,
+                std::is_trivially_copy_constructible<T>,
+                std::is_trivially_move_constructible<T>>>> {};
 template<typename T>
 inline constexpr bool is_implicit_lifetime_v = is_implicit_lifetime<T>::value;
 
@@ -45,42 +44,61 @@ public:
     using allocator_traits = std::allocator_traits<Alloc>;
     using size_type = typename allocator_traits::size_type;
 
-    explicit Fifo5(size_type capacity, Alloc const& alloc = Alloc{})
+    explicit Fifo5(size_type size, Alloc const& alloc = Alloc{})
         : Alloc{alloc}
-        , capacity_{capacity}
+        , size_{size}
 
         // allocate allocates n * sizeof(T) bytes of properly aligned but uninitialized
         // storage. Then it creates an array of type T[n] in the storage and starts its
         // lifetime, but ***does not start lifetime of any of its elements***.
         // Nowhere is "an array of type unsigned char or std::byte"
         // mentioned in the description of std::allocator<T>::allocate.
-        , ring_{allocator_traits::allocate(*this, capacity)}
-        // , ring_{std::start_lifetime_as_array(allocator_traits::allocate(*this, capacity), capacity)}
+        , ring_{allocator_traits::allocate(*this, size)}
     {}
 
     ~Fifo5() {
-        allocator_traits::deallocate(*this, ring_, capacity_);
+        allocator_traits::deallocate(*this, ring_, size_);
     }
 
+    // auto size = length - sizeof(update);
+    // auto ptr = reinterpret_cast<const std::byte*>(this) + sizeof(*this);
+    // auto str = start_lifetime_as_array<char>(ptr, size);
+    // return {str,size};
 
-    /// Returns the number of elements in the fifo
-    auto size() const noexcept {
-        auto pushCursor = pushCursor_.load(std::memory_order_acquire);
-        auto popCursor = popCursor_.load(std::memory_order_relaxed);
-
-        assert(popCursor <= pushCursor);
-        return pushCursor - popCursor;
-    }
-
-    /// Returns whether the container has no elements
-    auto empty() const noexcept { return size() == 0; }
-
-    /// Returns whether the container has capacity_() elements
-    auto full() const noexcept { return size() == capacity(); }
-
-    /// Returns the number of elements that can be held in the fifo
-    auto capacity() const noexcept { return capacity_; }
-
+    // // Assume Foo is an implicit lifetime type
+    // // create an array of type Foo[4]
+    // auto ptr = std::allocator<Foo>{}.allocate(4);
+    // 
+    // // read some bytes into ptr[0] from a socket
+    // ::read(sock, &ptr[0], sizeof(Foo));
+    //
+    // // Does ptr[0] now contain a Foo? or is it still just storage?
+    // // If just storage how does this differ from your the example on
+    // slide 25
+    //
+    // // Does something like this cause the lifetime of a Foo to begin?
+    // // This seems wrong because for the reinterpret_cast to be defined
+    // // ptr must in fact already point to a Foo.
+    // // auto for = reinterpret_cast<Foo*>(ptr);
+    //
+    // // Or do I need to "convert" the storage to char, unsigned char,
+    // // or std::byte before I do the read?
+    // auto bytes = start_lifetime_as_array<std::byte>(ptr, sizeof(Foo));
+    // ::read(sock, &bytes[0], sizeof(Foo));
+    //
+    // // Since bytes is properly aligned and of sufficient size for Foo
+    // there must be a Foo hidden somewhere in there along with a bunch
+    // of other objects just waiting for bigger things. So this should
+    // be valid and seems exactly the same to me as the stream example
+    // in P0593R6 para 3.7
+    // auto foo = reinterpret_cast<Foo*>(bytes);
+    //
+    // // OR
+    
+    
+    auto size() const { return size_; }
+    auto empty() const { return popCursor_ == pushCursor_; }
+    auto full() const { return (pushCursor_ - popCursor_) == size_; }
 
     /// An RAII proxy object returned by push(). Allows the caller to
     /// manipulate value_type's members directly in the fifo's ring. The
@@ -134,9 +152,10 @@ public:
         // call std::start_lifetime_as<T>(fifo->element(cursor_))?
         // If so, is it OK if get() happens to be called several times
         // on the same storage?
-        auto& get() noexcept { return *fifo_->element(cursor_); }
-        auto const& get() const noexcept { return *fifo_->element(cursor_); }
+        value_type& get() noexcept { return *fifo_->element(cursor_); }
+        value_type const& get() const noexcept { return *fifo_->element(cursor_); }
 
+        // TODO get rid of operator*
         value_type& operator*() noexcept { return get(); }
         value_type const& operator*() const noexcept { return get(); }
 
@@ -252,7 +271,7 @@ public:
         if (empty(pushCursorCached_, popCursor)) {
             return popper_t{};
         }
-        return popper_t(this, popCursor);
+        return popper_t{this, popCursor};
     };
 
     /// Pop one object from the fifo.
@@ -267,27 +286,25 @@ public:
     }
 
 private:
-    auto full(size_type pushCursor, size_type popCursor) const noexcept {
-        assert(popCursor <= pushCursor);
-        return (pushCursor - popCursor) == capacity_;
+    auto full(size_type pushCursor, size_type popCursor) noexcept {
+        return (pushCursor - popCursor) == size_;
     }
     static auto empty(size_type pushCursor, size_type popCursor) noexcept {
         return pushCursor == popCursor;
     }
 
-    auto* element(size_type cursor) noexcept { return &ring_[cursor % capacity_]; }
-    auto const* element(size_type cursor) const noexcept { return &ring_[cursor % capacity_]; }
+    auto* element(size_type cursor) noexcept { return &ring_[cursor % size_]; }
+    auto const* element(size_type cursor) const noexcept { return &ring_[cursor % size_]; }
 
 private:
-    size_type capacity_;
+    size_type size_;
     T* ring_;
 
     using CursorType = std::atomic<size_type>;
     static_assert(CursorType::is_always_lock_free);
 
     // https://stackoverflow.com/questions/39680206/understanding-stdhardware-destructive-interference-size-and-stdhardware-cons
-    // See Fifo3.hpp for reason why std::hardware_destructive_interference_size is not used directly
-    static constexpr auto hardware_destructive_interference_size = size_type{64};
+    static constexpr auto hardware_destructive_interference_size = size_type{128};
 
     /// Loaded and stored by the push thread; loaded by the pop thread
     alignas(hardware_destructive_interference_size) CursorType pushCursor_;
@@ -300,7 +317,4 @@ private:
 
     /// Exclusive to the pop thread
     alignas(hardware_destructive_interference_size) size_type pushCursorCached_{};
-
-    // Padding to avoid false sharing with adjacent objects
-    char padding_[hardware_destructive_interference_size - sizeof(size_type)];
 };
