@@ -7,23 +7,6 @@
 #include <new>
 #include <type_traits>
 
-/// std::is_implicit_lifetime not implemented in g++-12
-/// Almost correct. See [P2674R0](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2674r0.pdf).
-template<typename T>
-struct is_implicit_lifetime : std::disjunction<
-                              std::is_scalar<T>,
-                              std::is_array<T>,
-                              std::is_aggregate<T>,
-                              std::conjunction<
-                              std::is_trivially_destructible<T>,
-                              std::disjunction<
-                              std::is_trivially_default_constructible<T>,
-                              std::is_trivially_copy_constructible<T>,
-                              std::is_trivially_move_constructible<T>>>> {};
-template<typename T>
-inline constexpr bool is_implicit_lifetime_v = is_implicit_lifetime<T>::value;
-
-
 /// A trait used to optimize the number of bytes copied. Specialize this
 /// on the type used to parameterize the Fifo5 to implement the
 /// optimization. The general template returns `sizeof(T)`.
@@ -35,9 +18,9 @@ struct ValueSizeTraits
 };
 
 
-/// Require implicit lifetime, add ValueSizeTraits, pusher and popper to Fifo4
+/// Require trivial, add ValueSizeTraits, pusher and popper to Fifo4
 template<typename T, typename Alloc = std::allocator<T>>
-requires is_implicit_lifetime_v<T>
+    requires std::is_trivial_v<T>
 class Fifo5 : private Alloc
 {
 public:
@@ -47,19 +30,13 @@ public:
 
     explicit Fifo5(size_type capacity, Alloc const& alloc = Alloc{})
         : Alloc{alloc}
-        , capacity_{capacity}
-
-        // allocate allocates n * sizeof(T) bytes of properly aligned but uninitialized
-        // storage. Then it creates an array of type T[n] in the storage and starts its
-        // lifetime, but ***does not start lifetime of any of its elements***.
-        // Nowhere is "an array of type unsigned char or std::byte"
-        // mentioned in the description of std::allocator<T>::allocate.
-        , ring_{allocator_traits::allocate(*this, capacity)}
-        // , ring_{std::start_lifetime_as_array(allocator_traits::allocate(*this, capacity), capacity)}
-    {}
+        , mask_{capacity - 1}
+        , ring_{allocator_traits::allocate(*this, capacity)} {
+        assert((capacity & mask_) == 0);
+    }
 
     ~Fifo5() {
-        allocator_traits::deallocate(*this, ring_, capacity_);
+        allocator_traits::deallocate(*this, ring_, capacity());
     }
 
 
@@ -79,7 +56,7 @@ public:
     auto full() const noexcept { return size() == capacity(); }
 
     /// Returns the number of elements that can be held in the fifo
-    auto capacity() const noexcept { return capacity_; }
+    auto capacity() const noexcept { return mask_ + 1; }
 
 
     /// An RAII proxy object returned by push(). Allows the caller to
@@ -120,35 +97,23 @@ public:
         /// Return whether or not the pusher_t is active.
         explicit operator bool() const noexcept { return fifo_; }
 
-        /// In-place construct `value_type` with @a args through std::forward.
-        template< typename... Args >
-        void emplace(Args &&... args) noexcept;
-
         /// @name Direct access to the fifo's ring
         ///@{
+        value_type* get() noexcept { return fifo_->element(cursor_); }
+        value_type const* get() const noexcept { return fifo_->element(cursor_); }
 
-        // QUESTION
-        // These get() operations return a reference to one of the
-        // elements in the T[n] array created by the allocate call
-        // above. But the T's lifetime has not be started. Do I need to
-        // call std::start_lifetime_as<T>(fifo->element(cursor_))?
-        // If so, is it OK if get() happens to be called several times
-        // on the same storage?
-        auto& get() noexcept { return *fifo_->element(cursor_); }
-        auto const& get() const noexcept { return *fifo_->element(cursor_); }
+        value_type& operator*() noexcept { return *get(); }
+        value_type const& operator*() const noexcept { return *get(); }
 
-        value_type& operator*() noexcept { return get(); }
-        value_type const& operator*() const noexcept { return get(); }
-
-        value_type* operator->() noexcept { return &get(); }
-        value_type const* operator->() const noexcept { return &get(); }
+        value_type* operator->() noexcept { return get(); }
+        value_type const* operator->() const noexcept { return get(); }
         ///@}
 
         /// Copy-assign a `value_type` to the pusher. Prefer to use this
         /// form rather than assigning directly to a value_type&. It takes
         /// advantage of ValueSizeTraits.
         pusher_t& operator=(value_type const& value) noexcept {
-            std::memcpy(&get(), std::addressof(value), ValueSizeTraits<value_type>::size(value));
+            std::memcpy(get(), std::addressof(value), ValueSizeTraits<value_type>::size(value));
             return *this;
         }
 
@@ -222,20 +187,14 @@ public:
 
         /// @name Direct access to the fifo's ring
         ///@{
+        value_type* get() noexcept { return fifo_->element(cursor_); }
+        value_type const* get() const noexcept { return fifo_->element(cursor_); }
 
-        // QUESTION
-        // If std::start_lifetime_as<T> must be called in the pusher_t
-        // get() calls must it also be applied here? Or, are the
-        // pusher_t calls to it and the memcpy sufficient to have an
-        // actual object in the referenced t[] element?
-        auto& get() noexcept { return *fifo_->element(cursor_); }
-        auto const& get() const noexcept { return *fifo_->element(cursor_); }
+        value_type& operator*() noexcept { return *get(); }
+        value_type const& operator*() const noexcept { return *get(); }
 
-        value_type& operator*() noexcept { return get(); }
-        value_type const& operator*() const noexcept { return get(); }
-
-        value_type* operator->() noexcept { return &get(); }
-        value_type const* operator->() const noexcept { return &get(); }
+        value_type* operator->() noexcept { return get(); }
+        value_type const* operator->() const noexcept { return get(); }
         ///@}
 
     private:
@@ -269,17 +228,17 @@ public:
 private:
     auto full(size_type pushCursor, size_type popCursor) const noexcept {
         assert(popCursor <= pushCursor);
-        return (pushCursor - popCursor) == capacity_;
+        return (pushCursor - popCursor) == capacity();
     }
     static auto empty(size_type pushCursor, size_type popCursor) noexcept {
         return pushCursor == popCursor;
     }
 
-    auto* element(size_type cursor) noexcept { return &ring_[cursor % capacity_]; }
-    auto const* element(size_type cursor) const noexcept { return &ring_[cursor % capacity_]; }
+    auto* element(size_type cursor) noexcept { return &ring_[cursor & mask_]; }
+    auto const* element(size_type cursor) const noexcept { return &ring_[cursor & mask_]; }
 
 private:
-    size_type capacity_;
+    size_type mask_;
     T* ring_;
 
     using CursorType = std::atomic<size_type>;

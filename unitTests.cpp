@@ -186,12 +186,12 @@ TYPED_TEST(ProxyTest, pusher) {
             EXPECT_TRUE(!!pusher);
             pusher = i;
 
-            EXPECT_EQ(i, pusher.get());
+            EXPECT_EQ(i, *pusher.get());
             EXPECT_EQ(i, *pusher);
             EXPECT_EQ(i, *pusher.operator->());
             // TODO EXPECT_EQ(i, static_cast<typename TestFixture::FifoType::ValueType>(pusher));
 
-            EXPECT_EQ(i, std::as_const(pusher).get());
+            EXPECT_EQ(i, *std::as_const(pusher).get());
             EXPECT_EQ(i, *std::as_const(pusher));
             EXPECT_EQ(i, *std::as_const(pusher).operator->());
             // TODO EXPECT_EQ(i, static_cast<typename TestFixture::FifoType::ValueType>(std::as_const(pusher)));

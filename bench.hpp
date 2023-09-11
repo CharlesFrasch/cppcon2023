@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -32,19 +31,18 @@ struct isRigtorp : std::false_type {};
 
 template<typename T>
 void bench(char const* name, int cpu1, int cpu2) {
-    using value_type = struct alignas(64) : T {};
-    using AryValueType = typename value_type::value_type::value_type;
+    using value_type = typename T::value_type;
 
-    constexpr auto queueSize = 131072;
-    // constexpr auto iters = 200'000'000l;
-    constexpr auto iters = 100'000'000l;
+    constexpr auto fifoSize = 131072;
+    constexpr auto iters = 200'000'000l;
+    // constexpr auto iters = 100'000'000l;
 
-    T q(queueSize);
+    T q(fifoSize);
     auto t = std::jthread([&] {
         pinThread(cpu1);
-        for (auto i = AryValueType{}; i < iters; ++i) {
+        for (auto i = value_type{}; i < iters; ++i) {
 
-            typename value_type::value_type val;
+            value_type val;
             if constexpr(isRigtorp<T>::value) {
                 while (!q.front());
                 val = *q.front();
@@ -55,7 +53,7 @@ void bench(char const* name, int cpu1, int cpu2) {
                 }
             }
 
-            if (val[0] != i) {
+            if (val != i) {
                 throw std::runtime_error("invalid value");
             }
         }
@@ -63,14 +61,14 @@ void bench(char const* name, int cpu1, int cpu2) {
 
     pinThread(cpu2);
     auto start = std::chrono::steady_clock::now();
-    for (auto i = AryValueType{}; i < iters; ++i) {
+    for (auto i = value_type{}; i < iters; ++i) {
         if constexpr(isRigtorp<T>::value) {
-            while (not q.try_push(value_type{i})) {
+            while (not q.try_push(i)) {
                 ;
             }
 
         } else {
-            while (not q.push(typename value_type::value_type{i})) {
+            while (not q.push(i)) {
                 ;
             }
         }
@@ -80,8 +78,8 @@ void bench(char const* name, int cpu1, int cpu2) {
     }
     auto stop = std::chrono::steady_clock::now();
     auto delta = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-    std::cout << name << ": "
-        << std::setw(8) << std::right << iters * 1'000'000'000 / delta.count()
+    std::cout << std::setw(7) << std::left << name << ": "
+        << std::setw(10) << std::right << iters * 1'000'000'000 / delta.count()
         << " ops/s\n";
 }
 
@@ -93,6 +91,7 @@ void bench(char const* name, int argc, char* argv[]) {
        cpu1 = std::atoi(argv[1]);
        cpu2 = std::atoi(argv[2]);
     }
-    using value_type = std::array<long, 25>;
+    // using value_type = std::array<long, 25>;
+    using value_type = std::int64_t;
     bench<FifoT<value_type>>(name, cpu1, cpu2);
 }
