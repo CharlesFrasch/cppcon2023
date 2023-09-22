@@ -32,7 +32,7 @@ public:
 
     /// Returns the number of elements in the fifo
     auto size() const noexcept {
-        auto pushCursor = pushCursor_.load(std::memory_order_acquire);
+        auto pushCursor = pushCursor_.load(std::memory_order_relaxed);
         auto popCursor = popCursor_.load(std::memory_order_relaxed);
 
         assert(popCursor <= pushCursor);

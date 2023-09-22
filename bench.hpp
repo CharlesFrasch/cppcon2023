@@ -30,12 +30,11 @@ template<typename T>
 struct isRigtorp : std::false_type {};
 
 template<typename T>
-void bench(char const* name, int cpu1, int cpu2) {
+auto bench(char const* name, long iters, int cpu1, int cpu2) {
+    using namespace std::chrono_literals;
     using value_type = typename T::value_type;
 
     constexpr auto fifoSize = 131072;
-    constexpr auto iters = 200'000'000l;
-    // constexpr auto iters = 100'000'000l;
 
     T q(fifoSize);
     auto t = std::jthread([&] {
@@ -77,21 +76,28 @@ void bench(char const* name, int cpu1, int cpu2) {
       ;
     }
     auto stop = std::chrono::steady_clock::now();
-    auto delta = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-    std::cout << std::setw(7) << std::left << name << ": "
-        << std::setw(10) << std::right << iters * 1'000'000'000 / delta.count()
-        << " ops/s\n";
+    auto delta = stop - start;
+    return (iters * 1s)/delta;
 }
 
 template<template<typename> class FifoT>
 void bench(char const* name, int argc, char* argv[]) {
-    int cpu1 = -1;
-    int cpu2 = -1;
+    int cpu1 = 1;
+    int cpu2 = 2;
     if (argc == 3) {
        cpu1 = std::atoi(argv[1]);
        cpu2 = std::atoi(argv[2]);
     }
-    // using value_type = std::array<long, 25>;
+
+    constexpr auto iters = 400'000'000l;
+    // constexpr auto iters = 100'000'000l;
+
     using value_type = std::int64_t;
-    bench<FifoT<value_type>>(name, cpu1, cpu2);
+
+    // warmup
+    bench<FifoT<value_type>>(name, 1'000'000, cpu1, cpu2);
+
+    auto opsPerSec = bench<FifoT<value_type>>(name, iters, cpu1, cpu2);
+    std::cout << std::setw(7) << std::left << name << ": "
+        << std::setw(10) << std::right << opsPerSec << " ops/s\n";
 }

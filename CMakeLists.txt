@@ -58,3 +58,12 @@ target_compile_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address
 target_link_libraries(unitTests PRIVATE asan ubsan gtest gtest_main)
 target_link_options(unitTests PRIVATE -fsanitize=undefined -fsanitize=address)
 gtest_add_tests(TARGET unitTests)
+
+
+find_package(benchmark REQUIRED)
+add_executable(bench bench.cpp)
+target_compile_options(bench PRIVATE -Wno-interference-size)
+target_link_libraries(bench PRIVATE benchmark::benchmark)
+
+add_executable(bench_all bench_all.cpp)
+target_compile_options(bench_all PRIVATE -Wno-interference-size)
