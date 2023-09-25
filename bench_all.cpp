@@ -1,7 +1,11 @@
+#include "Fifo2.hpp"
 #include "Fifo3.hpp"
 #include "Fifo4.hpp"
 #include "Fifo4a.hpp"
+#include "Fifo4b.hpp"
 #include "Fifo5.hpp"
+#include "Fifo5a.hpp"
+#include "Mutex.hpp"
 #include "rigtorp.hpp"
 #include <boost/lockfree/spsc_queue.hpp>   // boost 1.74.0
 
@@ -22,12 +26,17 @@ using boost_spsc_queue = boost::lockfree::spsc_queue<T, boost::lockfree::fixed_s
 template<typename ValueT>
 void once(long iters, int cpu1, int cpu2) {
     std::cout <<
-        bench<Fifo3<ValueT>>("Fifo3", iters, cpu1, cpu2) << "," <<
-        bench<Fifo4<ValueT>>("Fifo4", iters, cpu1, cpu2) << "," <<
-        bench<Fifo4a<ValueT>>("Fifo4a", iters, cpu1, cpu2) << "," <<
-        bench<Fifo5<ValueT>>("Fifo5", iters, cpu1, cpu2) << "," <<
-        bench<rigtorp::SPSCQueue<ValueT>>("rigtorp", iters, cpu1, cpu2) << "," <<
-        bench<boost_spsc_queue<ValueT>>("boost::spsc_queue fixed", iters, cpu1, cpu2) <<
+        // Bench<Fifo2<ValueT>>{}(iters, cpu1, cpu2) << "," <<
+        // Bench<Mutex<ValueT>>{}(iters, cpu1, cpu2) <<
+
+        Bench<Fifo3<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo4<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo4a<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo4b<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo5<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo5a<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<rigtorp::SPSCQueue<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<boost_spsc_queue<ValueT>>{}(iters, cpu1, cpu2) << std::flush <<
         "\n";
 }
 
@@ -43,7 +52,8 @@ int main(int argc, char* argv[]) {
 
     using value_type = std::int64_t;
 
-    std::cout << "Fifo3,Fifo4,Fifo4a,Fifo5,rigtorp,boost_spsc_queue\n";
+    std::cout << "Fifo3,Fifo4,Fifo4a,Fifo4b,Fifo5,Fifo5a,rigtorp,boost_spsc_queue" << std::endl;
+    // std::cout << "Fifo2,Mutex\n";
     for (auto rep = 0; rep < reps; ++rep) {
         once<value_type>(iters, cpu1, cpu2);
     }

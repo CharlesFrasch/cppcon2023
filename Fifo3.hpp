@@ -23,7 +23,7 @@ public:
 
     ~Fifo3() {
         while(not empty()) {
-            ring_[popCursor_ % capacity_].~T();
+            element(popCursor_)->~T();
             ++popCursor_;
         }
         allocator_traits::deallocate(*this, ring_, capacity_);
@@ -57,7 +57,7 @@ public:
         if (full(pushCursor, popCursor)) {
             return false;
         }
-        new (&ring_[pushCursor % capacity_]) T(value);
+        new (element(pushCursor)) T(value);
         pushCursor_.store(pushCursor + 1, std::memory_order_release);
         return true;
     }
@@ -70,8 +70,8 @@ public:
         if (empty(pushCursor, popCursor)) {
             return false;
         }
-        value = ring_[popCursor % capacity_];
-        ring_[popCursor % capacity_].~T();
+        value = *element(popCursor);
+        element(popCursor)->~T();
         popCursor_.store(popCursor + 1, std::memory_order_release);
         return true;
     }
@@ -82,6 +82,9 @@ private:
     }
     static auto empty(size_type pushCursor, size_type popCursor) noexcept {
         return pushCursor == popCursor;
+    }
+    auto element(size_type cursor) noexcept {
+        return &ring_[cursor % capacity_];
     }
 
 private:

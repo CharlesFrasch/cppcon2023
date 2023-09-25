@@ -12,6 +12,11 @@
 
 #include <pthread.h>
 
+template<typename T>
+inline __attribute__((always_inline)) void doNotOptimize(T const& value) {
+    asm volatile("" : : "r,m" (value) : "memory");
+}
+
 
 static void pinThread(int cpu) {
     if (cpu < 0) {
@@ -30,55 +35,92 @@ template<typename T>
 struct isRigtorp : std::false_type {};
 
 template<typename T>
-auto bench(char const* name, long iters, int cpu1, int cpu2) {
-    using namespace std::chrono_literals;
+class Bench
+{
+public:
     using value_type = typename T::value_type;
 
-    constexpr auto fifoSize = 131072;
+    static constexpr auto fifoSize = 131072;
 
-    T q(fifoSize);
-    auto t = std::jthread([&] {
-        pinThread(cpu1);
+    auto operator()(long iters, int cpu1, int cpu2) {
+        using namespace std::chrono_literals;
+
+        auto t = std::jthread([&] {
+            pinThread(cpu1);
+            // pop warmup
+            for (auto i = value_type{}; i < fifoSize; ++i) {
+                pop(i);
+            }
+
+            // pop benchmark run
+            for (auto i = value_type{}; i < iters; ++i) {
+                pop(i);
+            }
+        });
+
+        pinThread(cpu2);
+        // push warmup
+        for (auto i = value_type{}; i < fifoSize; ++i) {
+            push(i);
+        }
+        waitForEmpty();
+
+        // push benchmark run
+        auto start = std::chrono::steady_clock::now();
         for (auto i = value_type{}; i < iters; ++i) {
-
-            value_type val;
-            if constexpr(isRigtorp<T>::value) {
-                while (!q.front());
-                val = *q.front();
-                q.pop();
-            } else {
-                while (not q.pop(val)) {
-                    ;
-                }
-            }
-
-            if (val != i) {
-                throw std::runtime_error("invalid value");
-            }
+            push(i);
         }
-    });
+        waitForEmpty();
+        auto stop = std::chrono::steady_clock::now();
 
-    pinThread(cpu2);
-    auto start = std::chrono::steady_clock::now();
-    for (auto i = value_type{}; i < iters; ++i) {
+        auto delta = stop - start;
+        return (iters * 1s)/delta;
+    }
+
+private:
+    void pop(value_type expected) {
+        value_type val;
         if constexpr(isRigtorp<T>::value) {
-            while (not q.try_push(i)) {
-                ;
-            }
-
+            while (!q.front()) {}
+            val = *q.front();
+            q.pop();
         } else {
-            while (not q.push(i)) {
-                ;
+            while (not q.pop(val)) {}
+        }
+        if (val != expected) {
+            throw std::runtime_error("invalid value");
+        }
+    }
+
+    void push(value_type i) {
+        if constexpr(isRigtorp<T>::value) {
+            while (auto again = not q.try_push(i)) {
+                doNotOptimize(again);
+            }
+        } else {
+            while (auto again = not q.push(i)) {
+                doNotOptimize(again);
             }
         }
     }
-    while (not q.empty()) {
-      ;
-    }
-    auto stop = std::chrono::steady_clock::now();
-    auto delta = stop - start;
-    return (iters * 1s)/delta;
+
+    void waitForEmpty() {
+        while (auto again = not q.empty()) {
+            doNotOptimize(again);
+        }
+    };
+
+private:
+    T q{fifoSize};
+};
+
+
+// "legacy" API
+template<typename T>
+auto bench(char const* name, long iters, int cpu1, int cpu2) {
+    return Bench<T>{}(iters, cpu1, cpu2);
 }
+
 
 template<template<typename> class FifoT>
 void bench(char const* name, int argc, char* argv[]) {
@@ -93,9 +135,6 @@ void bench(char const* name, int argc, char* argv[]) {
     // constexpr auto iters = 100'000'000l;
 
     using value_type = std::int64_t;
-
-    // warmup
-    bench<FifoT<value_type>>(name, 1'000'000, cpu1, cpu2);
 
     auto opsPerSec = bench<FifoT<value_type>>(name, iters, cpu1, cpu2);
     std::cout << std::setw(7) << std::left << name << ": "

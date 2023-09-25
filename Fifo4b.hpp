@@ -6,26 +6,28 @@
 #include <new>
 
 
-/// Threadsafe, efficient circular FIFO with cached cursors; bitwise AND vs remainder
+/// Threadsafe, efficient circular FIFO with cached cursors; constrained cursors
 template<typename T, typename Alloc = std::allocator<T>>
-class Fifo4a : private Alloc
+class Fifo4b : private Alloc
 {
 public:
     using value_type = T;
     using allocator_traits = std::allocator_traits<Alloc>;
     using size_type = typename allocator_traits::size_type;
 
-    explicit Fifo4a(size_type capacity, Alloc const& alloc = Alloc{})
+    explicit Fifo4b(size_type capacity, Alloc const& alloc = Alloc{})
         : Alloc{alloc}
-        , mask_{capacity - 1}
+        , capacity_{capacity + 1}
         , ring_{allocator_traits::allocate(*this, capacity)}
     {}
 
-    ~Fifo4a() {
-        while(not empty()) {
-            element(popCursor_)->~T();
-            ++popCursor_;
-        }
+    ~Fifo4b() {
+        // TODO fix shouldn't matter for benchmark since it waits until
+        // the fifo is empty
+        // while(not empty()) {
+        //     ring_[popCursor_ & mask_].~T();
+        //     ++popCursor_;
+        // }
         allocator_traits::deallocate(*this, ring_, capacity());
     }
 
@@ -45,22 +47,26 @@ public:
     auto full() const noexcept { return size() == capacity(); }
 
     /// Returns the number of elements that can be held in the fifo
-    auto capacity() const noexcept { return mask_ + 1; }
+    auto capacity() const noexcept { return capacity_ - 1; }
 
 
     /// Push one object onto the fifo.
     /// @return `true` if the operation is successful; `false` if fifo is full.
     auto push(T const& value) {
         auto pushCursor = pushCursor_.load(std::memory_order_relaxed);
-        if (full(pushCursor, popCursorCached_)) {
+        auto nextPushCursor = pushCursor + 1;
+        if (nextPushCursor == capacity_) {
+          nextPushCursor = 0;
+        }
+        if (nextPushCursor == popCursorCached_) {
             popCursorCached_ = popCursor_.load(std::memory_order_acquire);
-            if (full(pushCursor, popCursorCached_)) {
+            if (nextPushCursor == popCursorCached_) {
                 return false;
             }
         }
 
-        new (element(pushCursor)) T(value);
-        pushCursor_.store(pushCursor + 1, std::memory_order_release);
+        new (&ring_[pushCursor]) T(value);
+        pushCursor_.store(nextPushCursor, std::memory_order_release);
         return true;
     }
 
@@ -68,16 +74,20 @@ public:
     /// @return `true` if the pop operation is successful; `false` if fifo is empty.
     auto pop(T& value) {
         auto popCursor = popCursor_.load(std::memory_order_relaxed);
-        if (empty(pushCursorCached_, popCursor)) {
-            pushCursorCached_ = pushCursor_.load(std::memory_order_acquire);
-            if (empty(pushCursorCached_, popCursor)) {
-                return false;
-            }
+        if (popCursor  == pushCursorCached_) {
+          pushCursorCached_ = pushCursor_.load(std::memory_order_acquire);
+          if (pushCursorCached_ == popCursor) {
+            return false;
+          }
         }
 
-        value = *element(popCursor);
-        element(popCursor)->~T();
-        popCursor_.store(popCursor + 1, std::memory_order_release);
+        value = ring_[popCursor];
+        ring_[popCursor].~T();
+        auto nextPopCursor = popCursor + 1;
+        if (nextPopCursor == capacity_) {
+            nextPopCursor = 0;
+        }
+        popCursor_.store(nextPopCursor, std::memory_order_release);
         return true;
     }
 
@@ -88,12 +98,9 @@ private:
     static auto empty(size_type pushCursor, size_type popCursor) noexcept {
         return pushCursor == popCursor;
     }
-    auto element(size_type cursor) noexcept {
-        return &ring_[cursor & mask_];
-    }
 
 private:
-    size_type mask_;
+    size_type capacity_;
     T* ring_;
 
     using CursorType = std::atomic<size_type>;

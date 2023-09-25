@@ -7,34 +7,29 @@
 #include <new>
 #include <type_traits>
 
-/// A trait used to optimize the number of bytes copied. Specialize this
-/// on the type used to parameterize the Fifo5 to implement the
-/// optimization. The general template returns `sizeof(T)`.
-template<typename T>
-struct ValueSizeTraits
-{
-    using value_type = T;
-    static std::size_t size(value_type const& value) { return sizeof(value_type); }
-};
+// For ValueSizeTraits
+#include "Fifo5.hpp"
 
 
-/// Require trivial, add ValueSizeTraits, pusher and popper to Fifo4
+/// Require trivial, add ValueSizeTraits, pusher and popper to Fifo4;
+/// bitwise AND vs remainder
 template<typename T, typename Alloc = std::allocator<T>>
     requires std::is_trivial_v<T>
-class Fifo5 : private Alloc
+class Fifo5a : private Alloc
 {
 public:
     using value_type = T;
     using allocator_traits = std::allocator_traits<Alloc>;
     using size_type = typename allocator_traits::size_type;
 
-    explicit Fifo5(size_type capacity, Alloc const& alloc = Alloc{})
+    explicit Fifo5a(size_type capacity, Alloc const& alloc = Alloc{})
         : Alloc{alloc}
-        , capacity_{capacity}
-        , ring_{allocator_traits::allocate(*this, capacity)}
-    {}
+        , mask_{capacity - 1}
+        , ring_{allocator_traits::allocate(*this, capacity)} {
+        assert((capacity & mask_) == 0);
+    }
 
-    ~Fifo5() {
+    ~Fifo5a() {
         allocator_traits::deallocate(*this, ring_, capacity());
     }
 
@@ -55,7 +50,7 @@ public:
     auto full() const noexcept { return size() == capacity(); }
 
     /// Returns the number of elements that can be held in the fifo
-    auto capacity() const noexcept { return capacity_; }
+    auto capacity() const noexcept { return mask_ + 1; }
 
 
     /// An RAII proxy object returned by push(). Allows the caller to
@@ -65,7 +60,7 @@ public:
     {
     public:
         pusher_t() = default;
-        explicit pusher_t(Fifo5* fifo, size_type cursor) noexcept : fifo_{fifo}, cursor_{cursor} {}
+        explicit pusher_t(Fifo5a* fifo, size_type cursor) noexcept : fifo_{fifo}, cursor_{cursor} {}
 
         pusher_t(pusher_t const&) = delete;
         pusher_t& operator=(pusher_t const&) = delete;
@@ -117,7 +112,7 @@ public:
         }
 
     private:
-        Fifo5* fifo_{};
+        Fifo5a* fifo_{};
         size_type cursor_;
     };
     friend class pusher_t;
@@ -153,7 +148,7 @@ public:
     {
     public:
         popper_t() = default;
-        explicit popper_t(Fifo5* fifo, size_type cursor) noexcept : fifo_{fifo}, cursor_{cursor} {}
+        explicit popper_t(Fifo5a* fifo, size_type cursor) noexcept : fifo_{fifo}, cursor_{cursor} {}
 
         popper_t(popper_t const&) = delete;
         popper_t& operator=(popper_t const&) = delete;
@@ -197,7 +192,7 @@ public:
         ///@}
 
     private:
-        Fifo5* fifo_{};
+        Fifo5a* fifo_{};
         size_type cursor_;
     };
     friend popper_t;
@@ -233,11 +228,11 @@ private:
         return pushCursor == popCursor;
     }
 
-    auto* element(size_type cursor) noexcept { return &ring_[cursor % capacity_]; }
-    auto const* element(size_type cursor) const noexcept { return &ring_[cursor % capacity_]; }
+    auto* element(size_type cursor) noexcept { return &ring_[cursor & mask_]; }
+    auto const* element(size_type cursor) const noexcept { return &ring_[cursor & mask_]; }
 
 private:
-    size_type capacity_;
+    size_type mask_;
     T* ring_;
 
     using CursorType = std::atomic<size_type>;
