@@ -68,18 +68,18 @@ void BM_Fifo(benchmark::State& state) {
     pinThread(cpu2);
     for (auto _ : state) {
         if constexpr(isRigtorp<fifo_type>::value) {
-            while (not fifo.try_push(value)) {
-                ;
+            while (auto again = not fifo.try_push(value)) {
+                benchmark::DoNotOptimize(again);
             }
         } else {
-            while (not fifo.push(value)) {
-                ;
+            while (auto again = not fifo.push(value)) {
+                benchmark::DoNotOptimize(again);
             }
         }
         ++value;
 
-        while (not fifo.empty()) {
-          ;
+        while (auto again = not fifo.empty()) {
+            benchmark::DoNotOptimize(again);
         }
     }
     state.counters["ops/sec"] = benchmark::Counter(double(value), benchmark::Counter::kIsRate);

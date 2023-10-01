@@ -5,6 +5,8 @@
 #include <memory>
 #include <new>
 
+#include <sanitizer/tsan_interface.h>
+
 
 /// Threadsafe, efficient circular FIFO with cached cursors
 template<typename T, typename Alloc = std::allocator<T>>
@@ -54,11 +56,14 @@ public:
         auto pushCursor = pushCursor_.load(std::memory_order_relaxed);
         if (full(pushCursor, popCursorCached_)) {
             popCursorCached_ = popCursor_.load(std::memory_order_acquire);
+            // popCursorCached_ = popCursor_.load(std::memory_order_relaxed);
             if (full(pushCursor, popCursorCached_)) {
                 return false;
             }
         }
 
+        //__tsan_acquire(&popCursor_);
+        // std::atomic_thread_fence(std::memory_order_acquire);
         new (element(pushCursor)) T(value);
         pushCursor_.store(pushCursor + 1, std::memory_order_release);
         return true;
@@ -70,11 +75,14 @@ public:
         auto popCursor = popCursor_.load(std::memory_order_relaxed);
         if (empty(pushCursorCached_, popCursor)) {
             pushCursorCached_ = pushCursor_.load(std::memory_order_acquire);
+            // pushCursorCached_ = pushCursor_.load(std::memory_order_relaxed);
             if (empty(pushCursorCached_, popCursor)) {
                 return false;
             }
         }
 
+        // __tsan_acquire(&pushCursor_);
+        // std::atomic_thread_fence(std::memory_order_acquire);
         value = *element(popCursor);
         element(popCursor)->~T();
         popCursor_.store(popCursor + 1, std::memory_order_release);

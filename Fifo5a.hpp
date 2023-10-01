@@ -133,8 +133,7 @@ public:
     /// Push one object onto the fifo.
     /// @return `true` if the operation is successful; `false` if fifo is full.
     auto push(T const& value) noexcept {
-        auto pusher = push();
-        if (pusher) {
+        if (auto pusher = push(); pusher) {
             pusher = value;
             return true;
         }
@@ -211,8 +210,7 @@ public:
     /// Pop one object from the fifo.
     /// @return `true` if the pop operation is successful; `false` if fifo is empty.
     auto pop(T& value) noexcept {
-        auto popper = pop();
-        if (popper) {
+        if (auto popper = pop(); popper) {
             value = *popper;
             return true;
         }
