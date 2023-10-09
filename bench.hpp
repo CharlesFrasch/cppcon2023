@@ -81,11 +81,15 @@ private:
     void pop(value_type expected) {
         value_type val;
         if constexpr(isRigtorp<T>::value) {
-            while (!q.front()) {}
+            while (auto again = not q.front()) {
+                doNotOptimize(again);
+	    }
             val = *q.front();
             q.pop();
         } else {
-            while (not q.pop(val)) {}
+            while (auto again = not q.pop(val)) {
+                doNotOptimize(again);
+	    }
         }
         if (val != expected) {
             throw std::runtime_error("invalid value");
