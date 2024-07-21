@@ -1,6 +1,8 @@
 #include "Fifo4.hpp"
 #include "Fifo4a.hpp"
 #include "Fifo5.hpp"
+#include "Fifo5a.hpp"
+#include "Fifo5b.hpp"
 #include "rigtorp.hpp"
 
 #include <benchmark/benchmark.h>
@@ -95,6 +97,8 @@ void BM_Fifo(benchmark::State& state) {
 BENCHMARK_TEMPLATE(BM_Fifo, Fifo4);
 BENCHMARK_TEMPLATE(BM_Fifo, Fifo4a);
 BENCHMARK_TEMPLATE(BM_Fifo, Fifo5);
+BENCHMARK_TEMPLATE(BM_Fifo, Fifo5a);
+BENCHMARK_TEMPLATE(BM_Fifo, Fifo5b);
 BENCHMARK_TEMPLATE(BM_Fifo, rigtorp::SPSCQueue);
 
 BENCHMARK_MAIN();

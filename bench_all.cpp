@@ -5,6 +5,7 @@
 #include "Fifo4b.hpp"
 #include "Fifo5.hpp"
 #include "Fifo5a.hpp"
+#include "Fifo5b.hpp"
 #include "Mutex.hpp"
 #include "rigtorp.hpp"
 #include <boost/lockfree/spsc_queue.hpp>   // boost 1.74.0
@@ -35,6 +36,7 @@ void once(long iters, int cpu1, int cpu2) {
         Bench<Fifo4b<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
         Bench<Fifo5<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
         Bench<Fifo5a<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
+        Bench<Fifo5b<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
         Bench<rigtorp::SPSCQueue<ValueT>>{}(iters, cpu1, cpu2) << "," << std::flush <<
         Bench<boost_spsc_queue<ValueT>>{}(iters, cpu1, cpu2) << std::flush <<
         "\n";
@@ -52,7 +54,7 @@ int main(int argc, char* argv[]) {
 
     using value_type = std::int64_t;
 
-    std::cout << "Fifo3,Fifo4,Fifo4a,Fifo4b,Fifo5,Fifo5a,rigtorp,boost_spsc_queue" << std::endl;
+    std::cout << "Fifo3,Fifo4,Fifo4a,Fifo4b,Fifo5,Fifo5a,Fifo5b,rigtorp,boost_spsc_queue" << std::endl;
     // std::cout << "Fifo2,Mutex\n";
     for (auto rep = 0; rep < reps; ++rep) {
         once<value_type>(iters, cpu1, cpu2);

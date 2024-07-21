@@ -3,6 +3,8 @@
 #include "Fifo3.hpp"
 #include "Fifo4.hpp"
 #include "Fifo5.hpp"
+#include "Fifo5a.hpp"
+#include "Fifo5b.hpp"
 
 #include <gtest/gtest.h>
 
@@ -40,7 +42,8 @@ using FifoTypes = ::testing::Types<
     Fifo2<test_type>,
     Fifo3<test_type>,
     Fifo4<test_type>,
-    Fifo5<test_type>
+    Fifo5<test_type>,
+    Fifo5b<test_type>
     >;
 TYPED_TEST_SUITE(FifoTest, FifoTypes);
 
